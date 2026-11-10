@@ -57,4 +57,51 @@ describe("assign", () => {
     const body = await (await assign("j1")).json();
     assert.equal(body.projectId, "p10");
   });
+
+
+  it("does not assign a project that another judge has QUEUED", async () => {
+    const first = await (await assign("j1")).json();
+    const second = await (await assign("j2")).json();
+
+    assert.notEqual(first.projectId, second.projectId);
+  });
+
+  it("returns 404 when no projects are available", async () => {
+    //mark every project as completed by j1
+    for (let i = 1; i <= 10; i++) {
+      await collections().assignments.insertOne({
+        judgeId: "j1",
+        projectId: `p${i}`,
+        status: "COMPLETED",
+        createdAt: new Date(),
+      } as never);
+    }
+
+    const res = await assign("j1");
+    assert.equal(res.status, 404);
+
+    const body = await res.json();
+    assert.equal(body.error, "no projects available");
+  });
+
+  it("randomly selects among projects tied for fewest completions", async () => {
+    //give p1-p8 one completed assignment each
+    for (let i = 1; i <= 8; i++) {
+      await collections().assignments.insertOne({
+        judgeId: "j2",
+        projectId: `p${i}`,
+        status: "COMPLETED",
+        createdAt: new Date(),
+      } as never);
+    }
+
+    // p9 and p10 have zero completions, so both are candidates
+    const res = await assign("j1");
+    assert.equal(res.status, 201);
+
+    const body = await res.json();
+    assert.ok(body.projectId === "p9" || body.projectId === "p10");
+  });
+
+
 });
